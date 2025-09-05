@@ -5,37 +5,86 @@ import { conn } from "../db";
 import { User } from "../models/user";
 
 export const router = express.Router();
-router.get("/", (req, res) => {
-  res.send("register");
+
+
+router.get("/", (_req, res) => {
+  res.send("registeดฟดฟดฟr");
 });
+
 router.post("/", async (req, res) => {
-  let user: User = req.body;
-  let hashedPassword = await bcrypt.hash(user.password, 10);
-  const sql = `
-  INSERT INTO users (username, email, password_hash, full_name, role, status, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, 'ACTIVE', NOW(), NOW())
-`;
+  try {
+    const user: User = req.body;
 
-  const formattedSql = mysql.format(sql, [
-    user.username,
-    user.email,
-    hashedPassword,
-    user.full_name,
-    user.role ?? "GUEST",
-  ]);
-
-  conn.query(formattedSql, (err, results) => {
-    if (err) {
-      console.error("DB error:", err); // ดูใน console
-      return res.status(500).json({
-        message: "DB Error",
-        code: err.code,
-        errno: err.errno,
-        sqlState: err.sqlState,
-        
+    if (!user?.username?.trim() || !user?.email?.trim() || !user?.password) {
+      res.status(400).json({
+        message: "username, email, password are required",
       });
+      return;
     }
-    res.status(201).json({ message: "User registered successfully" });
-  });
-});
+    if (user.password.length < 8) {
+      res
+        .status(400)
+        .json({ message: "password must be at least 8 characters" });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+
+    const sql = `
+    INSERT INTO users
+    (username, email, password_hash, full_name, phone, role, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'MEMBER', 'ACTIVE', NOW(), NOW())
+  `;
   
+  const params = [
+    user.username.trim(),
+    user.email.trim(),
+    hashedPassword,
+    user.full_name?.trim() || null,
+    user.phone?.trim() || null,
+  ];
+  
+
+    conn.execute(sql, params, (err, results) => {
+      if (err) {
+        if ((err as any).code === "ER_DUP_ENTRY") {
+          res.status(409).json({ message: "username or email already exists" });
+          return;
+        }
+        console.error(
+          "DB Error:",
+          (err as any).sqlMessage || err.message || err
+        );
+        res.status(500).json({ message: "DB Error" });
+        return;
+      }
+
+      const r = results as mysql.ResultSetHeader;
+      if (r.affectedRows === 1) {
+        res.status(201).json({
+          success: true,
+          message: "User registered successfully",
+          user: {
+            id: r.insertId,
+            username: user.username.trim(),
+            email: user.email.trim(),
+            full_name: user.full_name?.trim() || null, // ✅ ตอบกลับ null ถ้าไม่ได้ส่ง
+            phone: user.phone ?? null,
+            role: "MEMBER",
+            status: "ACTIVE",
+          },
+        });
+        return;
+      }
+
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to register user" });
+    });
+  } catch (e) {
+    console.error("Unexpected Error:", e);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+export default router;

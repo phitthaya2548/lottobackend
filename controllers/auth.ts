@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import express from "express";
-import mysql from "mysql2";
 import { conn } from "../db";
 import { generateToken } from "../middleware/jwt";
 import { User } from "../models/user";
@@ -8,46 +7,61 @@ import { User } from "../models/user";
 export const router = express.Router();
 
 router.post("/", async (req, res) => {
-  const userInput: User = req.body;
-  const sql = "SELECT * FROM users WHERE email = ?";
-  const formattedSql = mysql.format(sql, [userInput.email]);
+  try {
+    const userInput: Partial<User> = req.body;
+    const username = userInput.username?.trim();
+    const password = userInput.password;
+    if (!username || !password) {
+      res.status(400).json({ message: "username and password are required" });
+      return;
+    }
 
-  conn.query(formattedSql, async (err, results: any[]) => {
+    const sql = `
+      SELECT id, username, full_name, phone, role, status, password_hash
+      FROM users
+      WHERE username = ?
+      LIMIT 1
+    `;
 
-    if (err) {
-      // log แบบเต็ม ๆ
-      console.error('❌ DB Error:', err);
-    
-      // log แค่ข้อความ error
-      console.error('❌ Error message:', err.message);
-    
-      // ถ้ามี stack trace
-      if (err.stack) {
-        console.error('❌ Stack trace:', err.stack);
+    conn.execute(sql, [username], async (err, results) => {
+      if (err) {
+        console.error("DB Error:", (err as any).sqlMessage || err.message || err);
+        res.status(500).json({ message: "Internal Server Error" });
+        return;
       }
-    
-      return res.status(500).json({ message: "Internal Server Error" });
-    }
-    
 
-    const user = results[0];
-    if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
+      const rows = results as any[];
+      const user = rows?.[0];
+      if (!user) {
+        res.status(401).json({ message: "Invalid username or password" });
+        return;
+      }
+      const isMatch = await bcrypt.compare(password, user.password_hash);
+      if (!isMatch) {
+        res.status(401).json({ message: "Invalid username or password" });
+        return;
+      }
+      if (user.status && user.status !== "ACTIVE") {
+        res.status(403).json({ message: "User is not active" });
+        return;
+      }
+      const token = generateToken({ userId: user.id, username: user.username });
 
-    const isMatch = await bcrypt.compare(userInput.password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    const token = generateToken({ userId: user.id, email: user.email });
-
-    res.json({
-      token,
-      id: user.id,
-      email: user.email,
-      name: user.username,
-      role: user.role
+      res.json({
+        message: "login success",
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          full_name: user.full_name,
+          phone: user.phone,
+          role: user.role,
+          status: user.status,
+        },
+      });
     });
-  });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 });

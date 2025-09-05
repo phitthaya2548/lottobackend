@@ -6,6 +6,7 @@ export class User {
   username: string;
   email: string;
   password: string;
+  phone: string;
   full_name: string;
   role: UserRole;
   status: UserStatus;
@@ -17,6 +18,7 @@ export class User {
     email: string,
     password: string,
     full_name: string,
+    phone: string,
     role: UserRole = "MEMBER",
     status: UserStatus = "ACTIVE",
     id?: number,
@@ -27,6 +29,7 @@ export class User {
     this.username = username;
     this.email = email;
     this.password = password;
+    this.phone = phone;
     this.full_name = full_name;
     this.role = role;
     this.status = status;
