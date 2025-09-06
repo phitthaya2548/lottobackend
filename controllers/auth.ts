@@ -17,7 +17,7 @@ router.post("/", async (req, res) => {
     }
 
     const sql = `
-      SELECT id, username, full_name, phone, role, status, password_hash
+      SELECT id, username, full_name, phone, role, password_hash
       FROM users
       WHERE username = ?
       LIMIT 1
@@ -25,7 +25,10 @@ router.post("/", async (req, res) => {
 
     conn.execute(sql, [username], async (err, results) => {
       if (err) {
-        console.error("DB Error:", (err as any).sqlMessage || err.message || err);
+        console.error(
+          "DB Error:",
+          (err as any).sqlMessage || err.message || err
+        );
         res.status(500).json({ message: "Internal Server Error" });
         return;
       }
@@ -41,10 +44,7 @@ router.post("/", async (req, res) => {
         res.status(401).json({ message: "Invalid username or password" });
         return;
       }
-      if (user.status && user.status !== "ACTIVE") {
-        res.status(403).json({ message: "User is not active" });
-        return;
-      }
+
       const token = generateToken({ userId: user.id, username: user.username });
 
       res.json({
@@ -56,7 +56,6 @@ router.post("/", async (req, res) => {
           full_name: user.full_name,
           phone: user.phone,
           role: user.role,
-          status: user.status,
         },
       });
     });

@@ -9,7 +9,7 @@ export class User {
   phone: string;
   full_name: string;
   role: UserRole;
-  status: UserStatus;
+
   createdAt: Date;
   updatedAt?: Date | null;
 
@@ -20,7 +20,6 @@ export class User {
     full_name: string,
     phone: string,
     role: UserRole = "MEMBER",
-    status: UserStatus = "ACTIVE",
     id?: number,
     createdAt: Date = new Date(),
     updatedAt?: Date | null
@@ -32,7 +31,6 @@ export class User {
     this.phone = phone;
     this.full_name = full_name;
     this.role = role;
-    this.status = status;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt ?? null;
   }

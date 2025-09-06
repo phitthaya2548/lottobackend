@@ -32,8 +32,8 @@ router.post("/", async (req, res) => {
 
     const sql = `
     INSERT INTO users
-    (username, email, password_hash, full_name, phone, role, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'MEMBER', 'ACTIVE', NOW(), NOW())
+    (username, email, password_hash, full_name, phone, role,  created_at, updated_at)
+    VALUES (?, ?, ?,  ?, 'MEMBER',  CONVERT_TZ(NOW(), '+00:00', '+07:00'), CONVERT_TZ(NOW(), '+00:00', '+07:00'))
   `;
   
   const params = [
