@@ -6,7 +6,6 @@ import { User } from "../models/user";
 
 export const router = express.Router();
 
-
 router.get("/", (_req, res) => {
   res.send("registeดฟดฟดฟr");
 });
@@ -32,18 +31,17 @@ router.post("/", async (req, res) => {
 
     const sql = `
     INSERT INTO users
-    (username, email, password_hash, full_name, phone, role,  created_at, updated_at)
-    VALUES (?, ?, ?,  ?, 'MEMBER',  CONVERT_TZ(NOW(), '+00:00', '+07:00'), CONVERT_TZ(NOW(), '+00:00', '+07:00'))
+    (username, email, password_hash, full_name, phone, role, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'MEMBER', CONVERT_TZ(NOW(), '+00:00', '+07:00'), CONVERT_TZ(NOW(), '+00:00', '+07:00'))
   `;
-  
-  const params = [
-    user.username.trim(),
-    user.email.trim(),
-    hashedPassword,
-    user.full_name?.trim() || null,
-    user.phone?.trim() || null,
-  ];
-  
+
+    const params = [
+      user.username.trim(),
+      user.email.trim(),
+      hashedPassword,
+      user.full_name?.trim() || null,
+      user.phone?.trim() || null,
+    ];
 
     conn.execute(sql, params, (err, results) => {
       if (err) {
@@ -68,10 +66,9 @@ router.post("/", async (req, res) => {
             id: r.insertId,
             username: user.username.trim(),
             email: user.email.trim(),
-            full_name: user.full_name?.trim() || null, // ✅ ตอบกลับ null ถ้าไม่ได้ส่ง
+            full_name: user.full_name?.trim() || null,
             phone: user.phone ?? null,
             role: "MEMBER",
-            status: "ACTIVE",
           },
         });
         return;
