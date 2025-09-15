@@ -9,7 +9,6 @@ export class User {
   phone: string;
   full_name: string;
   role: UserRole;
-
   createdAt: Date;
   updatedAt?: Date | null;
 
