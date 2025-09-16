@@ -16,12 +16,12 @@ router.post("/", async (req, res) => {
     const money = Number(req.body?.money ?? 0);
 
     if (!user?.username?.trim() || !user?.email?.trim() || !user?.password) {
-       res.status(400).json({
+      res.status(400).json({
         message: "username, email, password are required",
       });
     }
     if (user.password.length < 8) {
-       res
+      res
         .status(400)
         .json({ message: "password must be at least 8 characters" });
     }
@@ -47,12 +47,13 @@ router.post("/", async (req, res) => {
     conn.execute(sqlUser, paramsUser, (err, results) => {
       if (err) {
         if ((err as any).code === "ER_DUP_ENTRY") {
-           res
-            .status(409)
-            .json({ message: "username or email already exists" });
+          res.status(409).json({ message: "username or email already exists" });
         }
-        console.error("DB Error:", (err as any).sqlMessage || err.message || err);
-         res.status(500).json({ message: "DB Error" });
+        console.error(
+          "DB Error:",
+          (err as any).sqlMessage || err.message || err
+        );
+        res.status(500).json({ message: "DB Error" });
       }
 
       const r = results as mysql.ResultSetHeader;
@@ -74,7 +75,7 @@ router.post("/", async (req, res) => {
           if (err2) {
             console.error("Wallet DB Error:", (err2 as any).sqlMessage || err2);
             // ยังถือว่าสมัคร user ได้ แต่สร้าง wallet fail
-             res.status(201).json({
+            res.status(201).json({
               success: true,
               message: "User registered, but wallet creation failed",
               user: {
@@ -90,7 +91,7 @@ router.post("/", async (req, res) => {
           }
 
           // สำเร็จทั้ง user + wallet
-           res.status(201).json({
+          res.status(201).json({
             success: true,
             message: "User registered successfully",
             user: {
@@ -107,16 +108,15 @@ router.post("/", async (req, res) => {
           });
         });
       } else {
-         res
+        res
           .status(500)
           .json({ success: false, message: "Failed to register user" });
       }
     });
   } catch (e) {
     console.error("Unexpected Error:", e);
-     res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
 
 export default router;

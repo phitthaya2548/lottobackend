@@ -4,12 +4,13 @@ import { router as auth } from "./controllers/auth";
 import { router as draw } from "./controllers/draw";
 import { router as register } from "./controllers/register";
 import { router as kicket } from "./controllers/tikets";
-import {router as wallet} from "./controllers/wallets";
+import { router as wallet} from "./controllers/wallets";
+import { router as users} from "./controllers/users";
 export const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
+app.use("/users", users);
 app.use("/wallets", wallet);
 app.use("/tickets", kicket);
 app.use("/login", auth);
