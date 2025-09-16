@@ -3,12 +3,15 @@ import express from "express";
 import { router as auth } from "./controllers/auth";
 import { router as draw } from "./controllers/draw";
 import { router as register } from "./controllers/register";
-import { router as ticket } from "./controllers/tikets";
+import { router as kicket } from "./controllers/tikets";
+import {router as wallet} from "./controllers/wallets";
 export const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use("/tickets", ticket);
+
+app.use("/wallets", wallet);
+app.use("/tickets", kicket);
 app.use("/login", auth);
 app.use("/register", register);
 app.use("/draws", draw);

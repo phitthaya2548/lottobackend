@@ -1,4 +1,3 @@
-
 import express from "express";
 import { conn } from "../db";
 import { Draw } from "../models/draw";
@@ -108,6 +107,7 @@ router.get("/", (req, res) => {
         prize1_amount, prize2_amount, prize3_amount, last3_amount, last2_amount,
         created_at, closed_at, source_mode
       FROM draws
+      WHERE status = 'CLOSED'
       ORDER BY draw_number DESC
       LIMIT 1
     `;
@@ -116,13 +116,11 @@ router.get("/", (req, res) => {
     if (err) {
       console.error("DB Error:", (err as any).sqlMessage || err.message || err);
       res.status(500).json({ message: "Internal Server Error" });
-      ;
     }
 
     const rows = results as Draw[];
     if (!rows || rows.length === 0) {
       res.status(404).json({ message: "ยังไม่มีผลรางวัล" });
-      ;
     }
 
     const r = rows[0];
@@ -163,35 +161,37 @@ router.post("/randomlotto", async (req, res) => {
   const prize1Amount = Number(body.prize1_amount ?? 0);
   const prize2Amount = Number(body.prize2_amount ?? 0);
   const prize3Amount = Number(body.prize3_amount ?? 0);
-  const last3Amount  = Number(body.last3_amount  ?? 0);
-  const last2Amount  = Number(body.last2_amount  ?? 0);
-  const unique       = Boolean(body.unique_exact ?? true);
-  const sourceMode   = String(body.source_mode ?? "ALL");
+  const last3Amount = Number(body.last3_amount ?? 0);
+  const last2Amount = Number(body.last2_amount ?? 0);
+  const unique = Boolean(body.unique_exact ?? true);
+  const sourceMode = String(body.source_mode ?? "ALL");
 
   // ค่าตั้งต้นของ "งวดถัดไป" (ตอนเปิดงวดใหม่)
-  const nextDrawDate   = req.body?.next_draw_date ?? null;         // YYYY-MM-DD หรือ null = วันนี้
+  const nextDrawDate = req.body?.next_draw_date ?? null; // YYYY-MM-DD หรือ null = วันนี้
   const nextSourceMode = req.body?.next_source_mode ?? "ALL";
   const nextP1 = Number(req.body?.next_prize1_amount ?? 0);
   const nextP2 = Number(req.body?.next_prize2_amount ?? 0);
   const nextP3 = Number(req.body?.next_prize3_amount ?? 0);
-  const nextL3 = Number(req.body?.next_last3_amount  ?? 0);
-  const nextL2 = Number(req.body?.next_last2_amount  ?? 0);
+  const nextL3 = Number(req.body?.next_last3_amount ?? 0);
+  const nextL2 = Number(req.body?.next_last2_amount ?? 0);
 
   // ค่าตั้งต้น "bootstrap" (เผื่อไม่มีงวด OPEN ให้สร้างก่อน)
-  const bootDate   = req.body?.bootstrap_draw_date ?? null;
-  const bootMode   = req.body?.bootstrap_source_mode ?? "ALL";
+  const bootDate = req.body?.bootstrap_draw_date ?? null;
+  const bootMode = req.body?.bootstrap_source_mode ?? "ALL";
   const bootP1 = Number(req.body?.bootstrap_prize1_amount ?? 0);
   const bootP2 = Number(req.body?.bootstrap_prize2_amount ?? 0);
   const bootP3 = Number(req.body?.bootstrap_prize3_amount ?? 0);
-  const bootL3 = Number(req.body?.bootstrap_last3_amount  ?? 0);
-  const bootL2 = Number(req.body?.bootstrap_last2_amount  ?? 0);
+  const bootL3 = Number(req.body?.bootstrap_last3_amount ?? 0);
+  const bootL2 = Number(req.body?.bootstrap_last2_amount ?? 0);
 
   const randomDigits = (len: number) =>
-    Math.floor(Math.random() * Math.pow(10, len)).toString().padStart(len, "0");
+    Math.floor(Math.random() * Math.pow(10, len))
+      .toString()
+      .padStart(len, "0");
 
   const prize1 = randomDigits(6);
-  let prize2   = randomDigits(6);
-  let prize3   = randomDigits(6);
+  let prize2 = randomDigits(6);
+  let prize3 = randomDigits(6);
   if (unique) {
     while (prize2 === prize1) prize2 = randomDigits(6);
     while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
@@ -256,8 +256,16 @@ router.post("/randomlotto", async (req, res) => {
               closed_at=NOW()
         WHERE id=?`,
       [
-        prize1, prize2, prize3, last3, last2,
-        prize1Amount, prize2Amount, prize3Amount, last3Amount, last2Amount,
+        prize1,
+        prize2,
+        prize3,
+        last3,
+        last2,
+        prize1Amount,
+        prize2Amount,
+        prize3Amount,
+        last3Amount,
+        last2Amount,
         sourceMode,
         open.id,
       ]
@@ -265,15 +273,15 @@ router.post("/randomlotto", async (req, res) => {
 
     // 3) เปิดงวดถัดไป (เลขงวด +1 จากที่เพิ่งปิด)
     const nextOpenNumber = open.draw_number + 1;
-// ใช้เงินรางวัลของ "งวดก่อน" เป็นค่าเริ่มต้นของงวดใหม่ (ถ้าไม่ได้ส่ง next_* มา override)
-const carryP1 = Number(req.body?.next_prize1_amount ?? prize1Amount);
-const carryP2 = Number(req.body?.next_prize2_amount ?? prize2Amount);
-const carryP3 = Number(req.body?.next_prize3_amount ?? prize3Amount);
-const carryL3 = Number(req.body?.next_last3_amount  ?? last3Amount);
-const carryL2 = Number(req.body?.next_last2_amount  ?? last2Amount);
+    // ใช้เงินรางวัลของ "งวดก่อน" เป็นค่าเริ่มต้นของงวดใหม่ (ถ้าไม่ได้ส่ง next_* มา override)
+    const carryP1 = Number(req.body?.next_prize1_amount ?? prize1Amount);
+    const carryP2 = Number(req.body?.next_prize2_amount ?? prize2Amount);
+    const carryP3 = Number(req.body?.next_prize3_amount ?? prize3Amount);
+    const carryL3 = Number(req.body?.next_last3_amount ?? last3Amount);
+    const carryL2 = Number(req.body?.next_last2_amount ?? last2Amount);
 
-const [openIns] = (await tx.execute(
-  `
+    const [openIns] = (await tx.execute(
+      `
   INSERT INTO draws (
     draw_number, draw_date, status, source_mode,
     prize1_amount, prize2_amount, prize3_amount, last3_amount, last2_amount,
@@ -285,14 +293,17 @@ const [openIns] = (await tx.execute(
     NOW()
   )
   `,
-  [
-    nextOpenNumber,
-    nextDrawDate,
-    nextSourceMode,
-    carryP1, carryP2, carryP3, carryL3, carryL2,
-  ]
-)) as unknown as [{ insertId: number }, unknown];
-
+      [
+        nextOpenNumber,
+        nextDrawDate,
+        nextSourceMode,
+        carryP1,
+        carryP2,
+        carryP3,
+        carryL3,
+        carryL2,
+      ]
+    )) as unknown as [{ insertId: number }, unknown];
 
     const [oneRows] = (await tx.query(
       `
@@ -313,32 +324,36 @@ const [openIns] = (await tx.execute(
       LIMIT 1
       `,
       [open.id]
-    )) as unknown as [Array<{
-      id: number;
-      drawNumber: number;
-      drawDate: string;
-      status: "OPEN" | "CLOSED";
-      win1_full: string | null;
-      win2_full: string | null;
-      win3_full: string | null;
-      win_last3: string | null;
-      win_last2: string | null;
-      prize1_amount: number;
-      prize2_amount: number;
-      prize3_amount: number;
-      last3_amount: number;
-      last2_amount: number;
-      source_mode: string;
-      created_at: string;
-      closed_at: string | null;
-    }>, unknown];
+    )) as unknown as [
+      Array<{
+        id: number;
+        drawNumber: number;
+        drawDate: string;
+        status: "OPEN" | "CLOSED";
+        win1_full: string | null;
+        win2_full: string | null;
+        win3_full: string | null;
+        win_last3: string | null;
+        win_last2: string | null;
+        prize1_amount: number;
+        prize2_amount: number;
+        prize3_amount: number;
+        last3_amount: number;
+        last2_amount: number;
+        source_mode: string;
+        created_at: string;
+        closed_at: string | null;
+      }>,
+      unknown
+    ];
 
     await tx.commit();
 
     const row = oneRows[0];
-     res.status(201).json({
+    res.status(201).json({
       success: true,
-      message: "open draw (bootstrapped if missing) closed with results, next draw opened",
+      message:
+        "open draw (bootstrapped if missing) closed with results, next draw opened",
       draw: {
         id: row.id,
         drawNumber: row.drawNumber,
@@ -379,11 +394,11 @@ const [openIns] = (await tx.execute(
       },
     });
   } catch (error) {
-    console.error("DB Error:", (error as any).sqlMessage  || error);
+    console.error("DB Error:", (error as any).sqlMessage || error);
     res.status(500).json({ message: "Internal Server Error" });
-    
-    
   } finally {
-    try { tx.release(); } catch {}
+    try {
+      tx.release();
+    } catch {}
   }
 });
