@@ -4,6 +4,150 @@ import { Draw } from "../models/draw";
 
 export const router = express.Router();
 
+import type { RequestHandler } from "express";
+
+const checkPrizes: RequestHandler = async (req, res) => {
+  const drawNumber = Number(req.query.drawNumber ?? req.query.draw_number);
+  const ticketNumber =
+    typeof req.query.ticketNumber === "string"
+      ? req.query.ticketNumber.trim()
+      : undefined;
+  const buyerId =
+    req.query.buyerUserId ?? req.query.buyer_user_id
+      ? Number(req.query.buyerUserId ?? req.query.buyer_user_id)
+      : undefined;
+
+  // validate input mode
+  if (!Number.isInteger(drawNumber) || (ticketNumber == null && !Number.isInteger(buyerId!))) {
+    res.status(400).json({
+      success: false,
+      message:
+        "ต้องระบุ drawNumber:int และอย่างน้อยหนึ่งใน ticketNumber:string หรือ buyerUserId:int",
+    });
+    return;
+  }
+
+  // ดึงข้อมูลงวดจาก draw_number
+  const [drawRows] = await conn
+    .promise()
+    .query(
+      `SELECT id, status,
+              win1_full, win2_full, win3_full,
+              win_last3, win_last2,
+              prize1_amount, prize2_amount, prize3_amount,
+              last3_amount, last2_amount
+       FROM draws
+       WHERE draw_number = ?`,
+      [drawNumber]
+    );
+
+  const draw = Array.isArray(drawRows) && drawRows[0] as any;
+  if (!draw) {
+    res.status(404).json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
+    return;
+  }
+
+  if (draw.status !== "CLOSED") {
+    res.status(409).json({
+      success: false,
+      message: "งวดยังไม่ปิดประกาศผล (status != CLOSED)",
+    });
+    return;
+  }
+
+  // เตรียมรายการตั๋วที่จะตรวจ
+  let ticketList: Array<{ ticket_number: string }> = [];
+
+  if (ticketNumber) {
+    ticketList = [{ ticket_number: ticketNumber }];
+  } else if (Number.isInteger(buyerId)) {
+    const [tRows] = await conn
+      .promise()
+      .query(
+        `SELECT t.ticket_number
+         FROM tickets t
+         INNER JOIN draws d ON d.id = t.draw_id
+         WHERE d.draw_number = ? AND t.buyer_user_id = ?`,
+        [drawNumber, buyerId]
+      );
+    ticketList = (tRows as any[]).map(r => ({ ticket_number: r.ticket_number }));
+  }
+
+  if (ticketList.length === 0) {
+    res.json({
+      success: true,
+      drawNumber,
+      count: 0,
+      results: [],
+      note: "ไม่มีตั๋วให้ตรวจในเงื่อนไขที่ส่งมา",
+    });
+    return;
+  }
+
+  // ฟังก์ชันตรวจรางวัลใบเดียว
+  type PrizeHit = {
+    prize: "PRIZE1" | "PRIZE2" | "PRIZE3" | "LAST3" | "LAST2";
+    amount: number;
+  };
+
+  const judgeTicket = (num: string) => {
+    const n6 = (num ?? "").trim();
+    const last3 = n6.slice(-3);
+    const last2 = n6.slice(-2);
+
+    const hits: PrizeHit[] = [];
+
+    if (draw.win1_full && n6 === draw.win1_full) {
+      hits.push({ prize: "PRIZE1", amount: Number(draw.prize1_amount) });
+    }
+    if (draw.win2_full && n6 === draw.win2_full) {
+      hits.push({ prize: "PRIZE2", amount: Number(draw.prize2_amount) });
+    }
+    if (draw.win3_full && n6 === draw.win3_full) {
+      hits.push({ prize: "PRIZE3", amount: Number(draw.prize3_amount) });
+    }
+    if (draw.win_last3 && last3 === draw.win_last3) {
+      hits.push({ prize: "LAST3", amount: Number(draw.last3_amount) });
+    }
+    if (draw.win_last2 && last2 === draw.win_last2) {
+      hits.push({ prize: "LAST2", amount: Number(draw.last2_amount) });
+    }
+
+    // กติกา: ได้ "รางวัลสูงสุดเพียงรายการเดียว" (ไม่บวกรวม)
+    // ถ้าอยากให้บวกรวม ทดแทนด้วย reduce บวก amount ได้เลย
+    const best =
+      hits.length === 0
+        ? null
+        : hits.reduce((a, b) => (a.amount >= b.amount ? a : b));
+
+    return {
+      ticketNumber: n6,
+      matched: hits.map((h) => h.prize),
+      bestPrize: best?.prize ?? null,
+      awardedAmount: best?.amount ?? 0,
+    };
+  };
+
+  const results = ticketList.map((t) => judgeTicket(t.ticket_number));
+
+  res.json({
+    success: true,
+    mode: ticketNumber ? "single" : "buyer",
+    drawNumber,
+    ...(buyerId != null ? { buyerUserId: buyerId } : {}),
+    count: results.length,
+    results,
+  });
+};
+
+const asyncHandler =
+  (fn: RequestHandler): RequestHandler =>
+    (req, res, next) =>
+      Promise.resolve(fn(req, res, next)).catch(next);
+// Route ใหม่
+router.get("/prize-check", asyncHandler(checkPrizes));
+
+
 router.get("/list", async (req, res) => {
   try {
     const sql = `
@@ -325,27 +469,27 @@ router.post("/randomlotto", async (req, res) => {
       `,
       [open.id]
     )) as unknown as [
-      Array<{
-        id: number;
-        drawNumber: number;
-        drawDate: string;
-        status: "OPEN" | "CLOSED";
-        win1_full: string | null;
-        win2_full: string | null;
-        win3_full: string | null;
-        win_last3: string | null;
-        win_last2: string | null;
-        prize1_amount: number;
-        prize2_amount: number;
-        prize3_amount: number;
-        last3_amount: number;
-        last2_amount: number;
-        source_mode: string;
-        created_at: string;
-        closed_at: string | null;
-      }>,
-      unknown
-    ];
+        Array<{
+          id: number;
+          drawNumber: number;
+          drawDate: string;
+          status: "OPEN" | "CLOSED";
+          win1_full: string | null;
+          win2_full: string | null;
+          win3_full: string | null;
+          win_last3: string | null;
+          win_last2: string | null;
+          prize1_amount: number;
+          prize2_amount: number;
+          prize3_amount: number;
+          last3_amount: number;
+          last2_amount: number;
+          source_mode: string;
+          created_at: string;
+          closed_at: string | null;
+        }>,
+        unknown
+      ];
 
     await tx.commit();
 
@@ -399,6 +543,6 @@ router.post("/randomlotto", async (req, res) => {
   } finally {
     try {
       tx.release();
-    } catch {}
+    } catch { }
   }
 });
