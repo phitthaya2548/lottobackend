@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
 import express from "express";
 import { conn } from "../db";
-import { generateToken } from "../middleware/jwt";
 import { User } from "../models/user";
 
 export const router = express.Router();
@@ -45,11 +44,8 @@ router.post("/", async (req, res) => {
         return;
       }
 
-      const token = generateToken({ userId: user.id, username: user.username });
-
       res.json({
         message: "login success",
-        token,
         user: {
           id: user.id,
           username: user.username,
