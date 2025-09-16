@@ -148,6 +148,247 @@ const asyncHandler =
 router.get("/prize-check", asyncHandler(checkPrizes));
 
 
+type PrizeHit = {
+  prize: "PRIZE1" | "PRIZE2" | "PRIZE3" | "LAST3" | "LAST2";
+  amount: number;
+};
+
+const claimPrize: RequestHandler = async (req, res) => {
+  const drawNumber = Number(req.body.drawNumber ?? req.body.draw_number);
+  const ticketNumber =
+    typeof req.body.ticketNumber === "string"
+      ? req.body.ticketNumber.trim()
+      : undefined;
+  const buyerId =
+    req.body.buyerUserId ?? req.body.buyer_user_id
+      ? Number(req.body.buyerUserId ?? req.body.buyer_user_id)
+      : undefined;
+
+  if (!Number.isInteger(drawNumber) || !ticketNumber || !Number.isInteger(buyerId!)) {
+    res.status(400).json({
+      success: false,
+      message: "ต้องระบุ drawNumber:int, ticketNumber:string, buyerUserId:int",
+    });
+    return;
+  }
+
+  const judgeTicket = (num: string, draw: any) => {
+    const n6 = (num ?? "").trim();
+    const last3 = n6.slice(-3);
+    const last2 = n6.slice(-2);
+
+    const hits: PrizeHit[] = [];
+    if (draw.win1_full && n6 === draw.win1_full) {
+      hits.push({ prize: "PRIZE1", amount: Number(draw.prize1_amount) });
+    }
+    if (draw.win2_full && n6 === draw.win2_full) {
+      hits.push({ prize: "PRIZE2", amount: Number(draw.prize2_amount) });
+    }
+    if (draw.win3_full && n6 === draw.win3_full) {
+      hits.push({ prize: "PRIZE3", amount: Number(draw.prize3_amount) });
+    }
+    if (draw.win_last3 && last3 === draw.win_last3) {
+      hits.push({ prize: "LAST3", amount: Number(draw.last3_amount) });
+    }
+    if (draw.win_last2 && last2 === draw.win_last2) {
+      hits.push({ prize: "LAST2", amount: Number(draw.last2_amount) });
+    }
+
+    const best =
+      hits.length === 0 ? null : hits.reduce((a, b) => (a.amount >= b.amount ? a : b));
+
+    return {
+      isWinner: !!best,
+      bestPrize: best?.prize ?? null,
+      awardedAmount: best?.amount ?? 0,
+      matched: hits.map((h) => h.prize),
+    };
+  };
+
+  const db = conn.promise();
+  const tx = await db.getConnection();
+  try {
+    await tx.beginTransaction();
+
+    // 1) โหลด draw
+    const [drawRows] = await tx.query(
+      `SELECT id, status,
+              win1_full, win2_full, win3_full,
+              win_last3, win_last2,
+              prize1_amount, prize2_amount, prize3_amount,
+              last3_amount, last2_amount
+       FROM draws
+       WHERE draw_number = ?`,
+      [drawNumber]
+    );
+    const draw = Array.isArray(drawRows) && (drawRows as any[])[0];
+    if (!draw) {
+      await tx.rollback();
+      res.status(404).json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
+      return;
+    }
+    if (draw.status !== "CLOSED") {
+      await tx.rollback();
+      res.status(409).json({
+        success: false,
+        code: "DRAW_NOT_CLOSED",
+        message: "งวดยังไม่ปิดประกาศผล (status != CLOSED)",
+      });
+      return;
+    }
+
+    // 2) lock ticket
+    const [tRows] = await tx.query(
+      `SELECT id, draw_id, ticket_number, status, buyer_user_id
+       FROM tickets
+       WHERE draw_id = ? AND ticket_number = ?
+       FOR UPDATE`,
+      [draw.id, ticketNumber]
+    );
+    const ticket = Array.isArray(tRows) && (tRows as any[])[0];
+    if (!ticket) {
+      await tx.rollback();
+      res.status(404).json({
+        success: false,
+        message: "ไม่พบสลากใบนี้ในงวดดังกล่าว",
+      });
+      return;
+    }
+
+    // 3) ตรวจสิทธิ์
+    if (Number(ticket.buyer_user_id) !== Number(buyerId)) {
+      await tx.rollback();
+      res.status(403).json({
+        success: false,
+        code: "NOT_OWNER",
+        message: "สลากใบนี้ไม่ได้เป็นของผู้ใช้นี้",
+      });
+      return;
+    }
+
+    // 4) ตรวจสถานะซ้ำ
+    if (ticket.status === "REDEEMED") {
+      await tx.rollback();
+      res.status(409).json({
+        success: false,
+        code: "ALREADY_REDEEMED",
+        message: "สลากใบนี้ถูกขึ้นเงินไปแล้ว",
+      });
+      return;
+    }
+    if (ticket.status !== "SOLD") {
+      await tx.rollback();
+      res.status(409).json({
+        success: false,
+        code: "INVALID_STATUS",
+        message: `สถานะปัจจุบัน (${ticket.status}) ไม่สามารถขึ้นเงินได้`,
+      });
+      return;
+    }
+
+    // 5) คิดรางวัล
+    const judge = judgeTicket(ticket.ticket_number, draw);
+    if (!judge.isWinner || judge.awardedAmount <= 0) {
+      await tx.rollback();
+      res.status(409).json({
+        success: false,
+        code: "NOT_A_WINNER",
+        message: "สลากใบนี้ไม่ถูกรางวัล",
+        detail: {
+          drawNumber,
+          ticketNumber: ticket.ticket_number,
+          matched: judge.matched,
+        },
+      });
+      return;
+    }
+
+    // 6) ล็อกกระเป๋าเงินของผู้ใช้ (ต้องมีอยู่แล้ว)
+    const [wRows] = await tx.query(
+      `SELECT id, user_id, balance
+     FROM wallets
+    WHERE user_id = ?
+    FOR UPDATE`,
+      [buyerId]
+    );
+    const wallet = Array.isArray(wRows) && (wRows as any[])[0];
+
+    if (!wallet) {
+      await tx.rollback();
+      res.status(409).json({
+        success: false,
+        code: "WALLET_NOT_FOUND",
+        message: "ไม่พบกระเป๋าเงินของผู้ใช้ โปรดติดต่อฝ่ายบริการหรือให้สร้างกระเป๋าก่อน",
+      });
+      return;
+    }
+
+    // 7) ลงรายการธุรกรรม PRIZE (กันซ้ำด้วย unique key ถ้าใส่ตามข้อ 1)
+    const note = `Claim prize ${judge.bestPrize} for draw ${drawNumber} (ticket ${ticket.ticket_number})`;
+    try {
+      await tx.query(
+        `INSERT INTO wallet_transactions
+           (wallet_id, tx_type, amount, ref_type, ref_id, note)
+         VALUES
+           (?, 'PRIZE', ?, 'TICKET', ?, ?)`,
+        [wallet.id, judge.awardedAmount, ticket.id, note]
+      );
+    } catch (e: any) {
+      // ถ้าชน UNIQUE (เคยบันทึกไปแล้ว) → ถือว่าเคลมซ้ำ
+      if (e && e.code === "ER_DUP_ENTRY") {
+        await tx.rollback();
+        res.status(409).json({
+          success: false,
+          code: "DUPLICATE_PRIZE_TX",
+          message: "ธุรกรรมรางวัลนี้ถูกบันทึกไปแล้ว",
+        });
+        return;
+      }
+      throw e;
+    }
+
+    // 8) อัปเดตยอดกระเป๋า
+    await tx.query(
+      `UPDATE wallets
+         SET balance = balance + ?
+       WHERE id = ?`,
+      [judge.awardedAmount, wallet.id]
+    );
+
+    // 9) เปลี่ยนสถานะตั๋วเป็น REDEEMED
+    await tx.query(
+      `UPDATE tickets
+         SET status = 'REDEEMED'
+       WHERE id = ?`,
+      [ticket.id]
+    );
+
+    await tx.commit();
+
+    res.json({
+      success: true,
+      message: "ขึ้นเงินสำเร็จ และโอนเข้ากระเป๋าแล้ว",
+      drawNumber,
+      ticketNumber: ticket.ticket_number,
+      prize: judge.bestPrize,
+      awardedAmount: judge.awardedAmount,
+      wallet: {
+        walletId: wallet.id,
+        // ปล. ถ้าอยากส่ง balance ปัจจุบันกลับด้วย ควร SELECT อีกครั้งหลัง update
+      },
+    });
+  } catch (err) {
+    try { await tx.rollback(); } catch (_) { }
+    console.error(err);
+    res.status(500).json({ success: false, message: "server error" });
+  } finally {
+    tx.release();
+  }
+};
+
+// route
+router.post("/claim", asyncHandler(claimPrize));
+
 router.get("/list", async (req, res) => {
   try {
     const sql = `
