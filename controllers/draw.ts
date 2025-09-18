@@ -634,83 +634,78 @@ router.post("/randomlotto", async (req, res) => {
     }
 
     // ===== 2) เลขรางวัล: โหมดปกติ vs SOLD_ONLY =====
-    let prize1: string;
-    let prize2: string;
-    let prize3: string;
-    let last3: string;
-    let last2: string;
+let prize1: string;
+let prize2: string;
+let prize3: string;
+let last3: string; // <-- จะเซ็ตหลังจากรู้ prize1 แล้ว
+let last2: string;
 
-    if (sourceMode === "SOLD_ONLY") {
-      // ล็อกตั๋วของงวดนี้ (กันแก้ระหว่างจับรางวัล)
-      const [soldRows] = (await tx.query(
-        `SELECT ticket_number
-           FROM tickets
-          WHERE draw_id=? AND status='SOLD'
-          FOR UPDATE`,
-        [open.id]
-      )) as unknown as [{ ticket_number: string }[], unknown];
+if (sourceMode === "SOLD_ONLY") {
+  const [soldRows] = (await tx.query(
+    `SELECT ticket_number
+       FROM tickets
+      WHERE draw_id=? AND status='SOLD'
+      FOR UPDATE`,
+    [open.id]
+  )) as unknown as [{ ticket_number: string }[], unknown];
 
-      const soldList = soldRows.map(r => r.ticket_number);
+  const soldList = soldRows.map(r => r.ticket_number);
 
-      if (soldList.length === 0) {
-        // ไม่มีตั๋วขายเลย → fallback เป็นสุ่มเหมือนเดิม
-        prize1 = randomDigits(6);
-        prize2 = randomDigits(6);
-        prize3 = randomDigits(6);
-        if (unique) {
-          while (prize2 === prize1) prize2 = randomDigits(6);
-          while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
-        }
-        last3 = prize1.slice(-3);
-        last2 = randomDigits(2);
-      } else {
-        // มีตั๋วขาย → จับจากเลขที่ขาย
-        const picks = unique ? pickUnique(soldList, 3) : pickUnique(soldList, 1);
-        // อย่างน้อย 1 รางวัลต้องมีแน่ ๆ
-        prize1 = picks[0];
-
-        if (unique) {
-          // ถ้าขายไม่ถึง 3 ใบ ให้เติมด้วยเลขสุ่ม (เลี่ยงชนเท่าที่ทำได้)
-          const need = 3 - picks.length;
-          const extra: string[] = [];
-          const used = new Set(picks);
-          for (let i = 0; i < need; i++) {
-            let x = randomDigits(6);
-            while (used.has(x)) x = randomDigits(6);
-            used.add(x);
-            extra.push(x);
-          }
-          const all = [...picks, ...extra];
-          prize2 = all[1] ?? randomDigits(6);
-          prize3 = all[2] ?? randomDigits(6);
-        } else {
-          // อนุญาตซ้ำ → สุ่มจาก soldList ได้อิสระ
-          const r1 = soldList[Math.floor(Math.random() * soldList.length)];
-          const r2 = soldList[Math.floor(Math.random() * soldList.length)];
-          prize2 = r1;
-          prize3 = r2;
-        }
-
-        // last3 และ last2 เอาจากเลขที่ขายเพื่อให้มีผู้ถูกรางวัลแน่ ๆ
-        const anySold = soldList[Math.floor(Math.random() * soldList.length)];
-        last3 = anySold.slice(-3);
-
-        // เลือก last2 จากเลขที่ขาย หรือถ้าอยากให้ต่างจาก last3 ก็ได้ (ไม่บังคับ)
-        const anySold2 = soldList[Math.floor(Math.random() * soldList.length)];
-        last2 = anySold2.slice(-2);
-      }
-    } else {
-      // โหมดเดิม: สุ่มอิสระ
-      prize1 = randomDigits(6);
-      prize2 = randomDigits(6);
-      prize3 = randomDigits(6);
-      if (unique) {
-        while (prize2 === prize1) prize2 = randomDigits(6);
-        while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
-      }
-      last3 = prize1.slice(-3);
-      last2 = randomDigits(2);
+  if (soldList.length === 0) {
+    // ไม่มีตั๋วขาย → fallback สุ่ม
+    prize1 = randomDigits(6);
+    prize2 = randomDigits(6);
+    prize3 = randomDigits(6);
+    if (unique) {
+      while (prize2 === prize1) prize2 = randomDigits(6);
+      while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
     }
+    // last3 จะตั้งค่าหลังจากนี้จาก prize1
+    last2 = randomDigits(2);
+  } else {
+    // มีตั๋วขาย → จับจากเลขที่ขาย
+    const picks = unique ? pickUnique(soldList, 3) : pickUnique(soldList, 1);
+    prize1 = picks[0];
+
+    if (unique) {
+      const need = 3 - picks.length;
+      const extra: string[] = [];
+      const used = new Set(picks);
+      for (let i = 0; i < need; i++) {
+        let x = randomDigits(6);
+        while (used.has(x)) x = randomDigits(6);
+        used.add(x);
+        extra.push(x);
+      }
+      const all = [...picks, ...extra];
+      prize2 = all[1] ?? randomDigits(6);
+      prize3 = all[2] ?? randomDigits(6);
+    } else {
+      const r1 = soldList[Math.floor(Math.random() * soldList.length)];
+      const r2 = soldList[Math.floor(Math.random() * soldList.length)];
+      prize2 = r1;
+      prize3 = r2;
+    }
+
+    // last2 จะเอาจากเลขที่ขายเพื่อเพิ่มโอกาสถูกรางวัล
+    const anySold2 = soldList[Math.floor(Math.random() * soldList.length)];
+    last2 = anySold2.slice(-2);
+  }
+} else {
+  // โหมดเดิม: สุ่มอิสระ
+  prize1 = randomDigits(6);
+  prize2 = randomDigits(6);
+  prize3 = randomDigits(6);
+  if (unique) {
+    while (prize2 === prize1) prize2 = randomDigits(6);
+    while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
+  }
+  // last3 จะตั้งค่าหลังจากนี้จาก prize1
+  last2 = randomDigits(2);
+}
+
+// <-- ตั้งค่าตรงนี้ครั้งเดียวหลังรู้ prize1 แน่นอนแล้ว
+last3 = prize1.slice(-3);
 
     // 3) ปิดงวดด้วยผลรางวัลที่ได้
     await tx.execute(
