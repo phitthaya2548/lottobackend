@@ -71,7 +71,7 @@ const getTicketsByBuyer: RequestHandler = async (req, res) => {
   });
 };
 
-router.get("/", asyncHandler(getTicketsByBuyer));
+router.get("/by-buyer-and-draw", asyncHandler(getTicketsByBuyer));
 
 
 router.post("/buy-number", async (req, res) => {
@@ -191,4 +191,3 @@ router.post("/buy-number", async (req, res) => {
     }
   }
 });
-
