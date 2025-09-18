@@ -1,6 +1,6 @@
+import type { RequestHandler } from "express";
 import express from "express";
 import { conn } from "../db";
-import type { RequestHandler } from "express";
 
 export const router = express.Router();
 
@@ -35,8 +35,8 @@ router.get("/check", async (req, res) => {
 
 const asyncHandler =
   (fn: RequestHandler): RequestHandler =>
-    (req, res, next) =>
-      Promise.resolve(fn(req, res, next)).catch(next);
+  (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 
 const getTicketsByBuyer: RequestHandler = async (req, res) => {
   const drawNumber = Number(req.query.drawNumber ?? req.query.draw_number);
@@ -50,15 +50,13 @@ const getTicketsByBuyer: RequestHandler = async (req, res) => {
     return;
   }
 
-  const [rows] = await conn
-    .promise()
-    .query(
-      `SELECT t.ticket_number, t.status
+  const [rows] = await conn.promise().query(
+    `SELECT t.ticket_number, t.status
        FROM tickets t
        INNER JOIN draws d ON t.draw_id = d.id
        WHERE d.draw_number = ? AND t.buyer_user_id = ?`,
-      [drawNumber, buyerId]
-    );
+    [drawNumber, buyerId]
+  );
 
   const tickets = rows as Array<{ ticket_number: string; status: string }>;
 
@@ -73,12 +71,11 @@ const getTicketsByBuyer: RequestHandler = async (req, res) => {
 
 router.get("/by-buyer-and-draw", asyncHandler(getTicketsByBuyer));
 
-
 router.post("/buy-number", async (req, res) => {
   const drawId = Number(req.body?.drawId);
   const userId = Number(req.body?.userId);
   const number = String(req.body?.number ?? "").trim();
-  const price = Number(req.body?.price ?? 100);
+  const price = 100;
 
   if (
     !Number.isInteger(drawId) ||
@@ -103,10 +100,12 @@ router.post("/buy-number", async (req, res) => {
       const draw = (drows as any[])[0];
 
       if (!draw) {
-        await tx.rollback(); tx.release();
+        await tx.rollback();
+        tx.release();
         res.status(404).json({ success: false, message: "draw not found" });
       } else if (draw.status !== "OPEN") {
-        await tx.rollback(); tx.release();
+        await tx.rollback();
+        tx.release();
         res.status(409).json({ success: false, message: "draw is not OPEN" });
       } else {
         const realDrawId = Number(draw.id);
@@ -120,8 +119,8 @@ router.post("/buy-number", async (req, res) => {
 
         if (!wallet) {
           const [insw] = await tx.execute(
-            `INSERT INTO wallets (user_id, balance, created_at) VALUES (?, 0, NOW())`
-            , [userId]
+            `INSERT INTO wallets (user_id, balance, created_at) VALUES (?, 0, NOW())`,
+            [userId]
           );
           const wid = (insw as any).insertId;
           wallet = { id: wid, balance: 0 };
@@ -138,8 +137,14 @@ router.post("/buy-number", async (req, res) => {
           insertedId = (ins as any).insertId;
         } catch (e: any) {
           if (e?.code === "ER_DUP_ENTRY" || e?.errno === 1062) {
-            await tx.rollback(); tx.release();
-            res.status(409).json({ success: false, message: "This number has been sold already" });
+            await tx.rollback();
+            tx.release();
+            res
+              .status(409)
+              .json({
+                success: false,
+                message: "This number has been sold already",
+              });
           } else {
             throw e;
           }
@@ -156,18 +161,26 @@ router.post("/buy-number", async (req, res) => {
         if (upd.affectedRows !== 1) {
           // เงินไม่พอ → ยกเลิกดีล และลบตั๋วที่เพิ่งจอง
           await tx.execute(`DELETE FROM tickets WHERE id=?`, [insertedId]);
-          await tx.rollback(); tx.release();
-          res.status(400).json({ success: false, message: "Insufficient balance" });
+          await tx.rollback();
+          tx.release();
+          res
+            .status(400)
+            .json({ success: false, message: "Insufficient balance" });
         } else {
           // 5) log ประวัติ
           await tx.execute(
             `INSERT INTO wallet_transactions (wallet_id, tx_type, amount, ref_type, ref_id, note)
                  VALUES (?, 'PURCHASE', ?, 'TICKET', ?, ?)`,
-            [wallet.id, -price, insertedId!, `Buy number ${number} for draw ${realDrawId}`]
+            [
+              wallet.id,
+              -price,
+              insertedId!,
+              `Buy number ${number} for draw ${realDrawId}`,
+            ]
           );
 
-
-          await tx.commit(); tx.release();
+          await tx.commit();
+          tx.release();
 
           res.json({
             success: true,
@@ -184,10 +197,19 @@ router.post("/buy-number", async (req, res) => {
         }
       }
     } catch (err: any) {
-      try { await tx.rollback(); } catch { }
-      try { tx.release(); } catch { }
-      console.error("buy-number error:", err?.sqlMessage || err?.message || err);
-      res.status(500).json({ success: false, message: "Internal Server Error" });
+      try {
+        await tx.rollback();
+      } catch {}
+      try {
+        tx.release();
+      } catch {}
+      console.error(
+        "buy-number error:",
+        err?.sqlMessage || err?.message || err
+      );
+      res
+        .status(500)
+        .json({ success: false, message: "Internal Server Error" });
     }
   }
 });
