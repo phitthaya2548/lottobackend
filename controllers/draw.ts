@@ -393,6 +393,7 @@ router.get("/list", async (req, res) => {
   try {
     const sql = `
       SELECT
+        id AS id,                                  -- ถ้าอยากได้ id ใน /list ด้วย ให้ใส่
         draw_number AS drawNumber,
         DATE_FORMAT(draw_date, '%Y-%m-%d') AS drawDate
       FROM draws
@@ -402,72 +403,78 @@ router.get("/list", async (req, res) => {
     res.json({ success: true, draws: rows });
   } catch (err: any) {
     console.error("SQL error:", err.sqlMessage || err.message || err);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
 router.get("/bydate", async (req, res) => {
   try {
-    const { date, drawNumber } = req.query as {
-      date?: string;
-      drawNumber?: string;
-    };
+    const { date, drawNumber } = req.query as { date?: string; drawNumber?: string };
 
-    if (!date)
-      res
-        .status(400)
-        .json({ success: false, message: "date is required (YYYY-MM-DD)" });
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
-      res.status(400).json({
-        success: false,
-        message: "invalid date format, expected YYYY-MM-DD",
-      });
+    // ===== validate =====
+    if (!date) {
+       res.status(400).json({ success: false, message: "date is required (YYYY-MM-DD)" });
+    }
 
-    const drawNo = drawNumber ? Number(drawNumber) : undefined;
-    if (drawNumber && (!Number.isInteger(drawNo) || drawNo! <= 0)) {
-      res.status(400).json({ success: false, message: "invalid drawNumber" });
+
+    let drawNo: number | undefined;
+    if (typeof drawNumber === "string" && drawNumber.trim() !== "") {
+      const n = Number(drawNumber);
+      if (!Number.isInteger(n) || n <= 0) {
+         res.status(400).json({ success: false, message: "invalid drawNumber" });
+      }
+      drawNo = n;
+    }
+
+    // ===== build SQL =====
+    const where: string[] = ["draw_date = ?"];
+    const params: any[] = [date];
+    if (typeof drawNo === "number") {
+      where.push("draw_number = ?");
+      params.push(drawNo);
     }
 
     const sql = `
       SELECT
-        draw_number AS drawNumber,
-        DATE_FORMAT(draw_date, '%Y-%m-%d') AS drawDate,
-        win1_full   AS prize1,
-        win2_full   AS prize2,
-        win3_full   AS prize3,
-        win_last3   AS last3,
-        win_last2   AS last2,
-        prize1_amount,
-        prize2_amount,
-        prize3_amount,
-        last3_amount,
-        last2_amount
+        COALESCE(id, 0)                             AS id,          -- <<<< ใส่ id มาด้วย
+        COALESCE(draw_number, 0)                    AS drawNumber,
+        DATE_FORMAT(draw_date, '%Y-%m-%d')          AS drawDate,
+        COALESCE(win1_full, '')                     AS prize1,
+        COALESCE(win2_full, '')                     AS prize2,
+        COALESCE(win3_full, '')                     AS prize3,
+        COALESCE(win_last3, '')                     AS last3,
+        COALESCE(win_last2, '')                     AS last2,
+        COALESCE(prize1_amount, 0)                  AS prize1_amount,
+        COALESCE(prize2_amount, 0)                  AS prize2_amount,
+        COALESCE(prize3_amount, 0)                  AS prize3_amount,
+        COALESCE(last3_amount, 0)                   AS last3_amount,
+        COALESCE(last2_amount, 0)                   AS last2_amount
       FROM draws
-      WHERE draw_date = ?
-      ${drawNumber ? "AND draw_number = ?" : ""}
+      WHERE ${where.join(" AND ")}
+      ORDER BY draw_number DESC
       LIMIT 1
     `;
 
-    const params: any[] = [date];
-    if (drawNumber) params.push(drawNo);
-
     const [rows] = await conn.promise().query(sql, params);
     const list = rows as any[];
-    if (!list || list.length === 0)
-      res.status(404).json({ success: false, message: "Not found" });
+    if (!list || list.length === 0) {
+       res.status(404).json({ success: false, message: "Not found" });
+    }
 
     const row = list[0];
-    res.json({
+
+     res.json({
       success: true,
       draw: {
-        drawNumber: row.drawNumber,
-        drawDate: row.drawDate,
+        id: Number(row.id ?? 0),                    // <<<< ตอนนี้มีค่าแน่นอน
+        drawNumber: Number(row.drawNumber ?? 0),
+        drawDate: row.drawDate ?? date,
         results: {
-          first: row.prize1,
-          second: row.prize2,
-          third: row.prize3,
-          last3: row.last3,
-          last2: row.last2,
+          first: String(row.prize1 ?? ""),
+          second: String(row.prize2 ?? ""),
+          third: String(row.prize3 ?? ""),
+          last3: String(row.last3 ?? ""),
+          last2: String(row.last2 ?? ""),
         },
         amounts: {
           prize1Amount: Number(row.prize1_amount ?? 0),
