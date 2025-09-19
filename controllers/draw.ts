@@ -18,7 +18,10 @@ const checkPrizes: RequestHandler = async (req, res) => {
       : undefined;
 
   // validate input mode
-  if (!Number.isInteger(drawNumber) || (ticketNumber == null && !Number.isInteger(buyerId!))) {
+  if (
+    !Number.isInteger(drawNumber) ||
+    (ticketNumber == null && !Number.isInteger(buyerId!))
+  ) {
     res.status(400).json({
       success: false,
       message:
@@ -28,22 +31,22 @@ const checkPrizes: RequestHandler = async (req, res) => {
   }
 
   // ดึงข้อมูลงวดจาก draw_number
-  const [drawRows] = await conn
-    .promise()
-    .query(
-      `SELECT id, status,
+  const [drawRows] = await conn.promise().query(
+    `SELECT id, status,
               win1_full, win2_full, win3_full,
               win_last3, win_last2,
               prize1_amount, prize2_amount, prize3_amount,
               last3_amount, last2_amount
        FROM draws
        WHERE draw_number = ?`,
-      [drawNumber]
-    );
+    [drawNumber]
+  );
 
-  const draw = Array.isArray(drawRows) && drawRows[0] as any;
+  const draw = Array.isArray(drawRows) && (drawRows[0] as any);
   if (!draw) {
-    res.status(404).json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
+    res
+      .status(404)
+      .json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
     return;
   }
 
@@ -61,16 +64,16 @@ const checkPrizes: RequestHandler = async (req, res) => {
   if (ticketNumber) {
     ticketList = [{ ticket_number: ticketNumber }];
   } else if (Number.isInteger(buyerId)) {
-    const [tRows] = await conn
-      .promise()
-      .query(
-        `SELECT t.ticket_number
+    const [tRows] = await conn.promise().query(
+      `SELECT t.ticket_number
          FROM tickets t
          INNER JOIN draws d ON d.id = t.draw_id
          WHERE d.draw_number = ? AND t.buyer_user_id = ?`,
-        [drawNumber, buyerId]
-      );
-    ticketList = (tRows as any[]).map(r => ({ ticket_number: r.ticket_number }));
+      [drawNumber, buyerId]
+    );
+    ticketList = (tRows as any[]).map((r) => ({
+      ticket_number: r.ticket_number,
+    }));
   }
 
   if (ticketList.length === 0) {
@@ -142,11 +145,10 @@ const checkPrizes: RequestHandler = async (req, res) => {
 
 const asyncHandler =
   (fn: RequestHandler): RequestHandler =>
-    (req, res, next) =>
-      Promise.resolve(fn(req, res, next)).catch(next);
+  (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 // Route ใหม่
 router.get("/prize-check", asyncHandler(checkPrizes));
-
 
 type PrizeHit = {
   prize: "PRIZE1" | "PRIZE2" | "PRIZE3" | "LAST3" | "LAST2";
@@ -164,7 +166,11 @@ const claimPrize: RequestHandler = async (req, res) => {
       ? Number(req.body.buyerUserId ?? req.body.buyer_user_id)
       : undefined;
 
-  if (!Number.isInteger(drawNumber) || !ticketNumber || !Number.isInteger(buyerId!)) {
+  if (
+    !Number.isInteger(drawNumber) ||
+    !ticketNumber ||
+    !Number.isInteger(buyerId!)
+  ) {
     res.status(400).json({
       success: false,
       message: "ต้องระบุ drawNumber:int, ticketNumber:string, buyerUserId:int",
@@ -195,7 +201,9 @@ const claimPrize: RequestHandler = async (req, res) => {
     }
 
     const best =
-      hits.length === 0 ? null : hits.reduce((a, b) => (a.amount >= b.amount ? a : b));
+      hits.length === 0
+        ? null
+        : hits.reduce((a, b) => (a.amount >= b.amount ? a : b));
 
     return {
       isWinner: !!best,
@@ -224,7 +232,9 @@ const claimPrize: RequestHandler = async (req, res) => {
     const draw = Array.isArray(drawRows) && (drawRows as any[])[0];
     if (!draw) {
       await tx.rollback();
-      res.status(404).json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
+      res
+        .status(404)
+        .json({ success: false, message: "ไม่พบงวดนี้ (draw_number)" });
       return;
     }
     if (draw.status !== "CLOSED") {
@@ -318,7 +328,8 @@ const claimPrize: RequestHandler = async (req, res) => {
       res.status(409).json({
         success: false,
         code: "WALLET_NOT_FOUND",
-        message: "ไม่พบกระเป๋าเงินของผู้ใช้ โปรดติดต่อฝ่ายบริการหรือให้สร้างกระเป๋าก่อน",
+        message:
+          "ไม่พบกระเป๋าเงินของผู้ใช้ โปรดติดต่อฝ่ายบริการหรือให้สร้างกระเป๋าก่อน",
       });
       return;
     }
@@ -378,7 +389,9 @@ const claimPrize: RequestHandler = async (req, res) => {
       },
     });
   } catch (err) {
-    try { await tx.rollback(); } catch (_) { }
+    try {
+      await tx.rollback();
+    } catch (_) {}
     console.error(err);
     res.status(500).json({ success: false, message: "server error" });
   } finally {
@@ -409,19 +422,23 @@ router.get("/list", async (req, res) => {
 
 router.get("/bydate", async (req, res) => {
   try {
-    const { date, drawNumber } = req.query as { date?: string; drawNumber?: string };
+    const { date, drawNumber } = req.query as {
+      date?: string;
+      drawNumber?: string;
+    };
 
     // ===== validate =====
     if (!date) {
-       res.status(400).json({ success: false, message: "date is required (YYYY-MM-DD)" });
+      res
+        .status(400)
+        .json({ success: false, message: "date is required (YYYY-MM-DD)" });
     }
-
 
     let drawNo: number | undefined;
     if (typeof drawNumber === "string" && drawNumber.trim() !== "") {
       const n = Number(drawNumber);
       if (!Number.isInteger(n) || n <= 0) {
-         res.status(400).json({ success: false, message: "invalid drawNumber" });
+        res.status(400).json({ success: false, message: "invalid drawNumber" });
       }
       drawNo = n;
     }
@@ -458,15 +475,15 @@ router.get("/bydate", async (req, res) => {
     const [rows] = await conn.promise().query(sql, params);
     const list = rows as any[];
     if (!list || list.length === 0) {
-       res.status(404).json({ success: false, message: "Not found" });
+      res.status(404).json({ success: false, message: "Not found" });
     }
 
     const row = list[0];
 
-     res.json({
+    res.json({
       success: true,
       draw: {
-        id: Number(row.id ?? 0),                    // <<<< ตอนนี้มีค่าแน่นอน
+        id: Number(row.id ?? 0), // <<<< ตอนนี้มีค่าแน่นอน
         drawNumber: Number(row.drawNumber ?? 0),
         drawDate: row.drawDate ?? date,
         results: {
@@ -580,7 +597,7 @@ router.post("/randomlotto", async (req, res) => {
       .padStart(len, "0");
 
   // helper: สุ่ม k รายการแบบไม่ซ้ำจากอาร์เรย์ (ถ้าจำนวนน้อยกว่าก็คืนเท่าที่มี)
-  const pickUnique = <T,>(arr: T[], k: number) => {
+  const pickUnique = <T>(arr: T[], k: number) => {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -634,78 +651,80 @@ router.post("/randomlotto", async (req, res) => {
     }
 
     // ===== 2) เลขรางวัล: โหมดปกติ vs SOLD_ONLY =====
-let prize1: string;
-let prize2: string;
-let prize3: string;
-let last3: string; // <-- จะเซ็ตหลังจากรู้ prize1 แล้ว
-let last2: string;
+    let prize1: string;
+    let prize2: string;
+    let prize3: string;
+    let last3: string; // <-- จะเซ็ตหลังจากรู้ prize1 แล้ว
+    let last2: string;
 
-if (sourceMode === "SOLD_ONLY") {
-  const [soldRows] = (await tx.query(
-    `SELECT ticket_number
+    if (sourceMode === "SOLD_ONLY") {
+      const [soldRows] = (await tx.query(
+        `SELECT ticket_number
        FROM tickets
       WHERE draw_id=? AND status='SOLD'
       FOR UPDATE`,
-    [open.id]
-  )) as unknown as [{ ticket_number: string }[], unknown];
+        [open.id]
+      )) as unknown as [{ ticket_number: string }[], unknown];
 
-  const soldList = soldRows.map(r => r.ticket_number);
+      const soldList = soldRows.map((r) => r.ticket_number);
 
-  if (soldList.length === 0) {
-    // ไม่มีตั๋วขาย → fallback สุ่ม
-    prize1 = randomDigits(6);
-    prize2 = randomDigits(6);
-    prize3 = randomDigits(6);
-    if (unique) {
-      while (prize2 === prize1) prize2 = randomDigits(6);
-      while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
-    }
-    // last3 จะตั้งค่าหลังจากนี้จาก prize1
-    last2 = randomDigits(2);
-  } else {
-    // มีตั๋วขาย → จับจากเลขที่ขาย
-    const picks = unique ? pickUnique(soldList, 3) : pickUnique(soldList, 1);
-    prize1 = picks[0];
+      if (soldList.length === 0) {
+        // ไม่มีตั๋วขาย → fallback สุ่ม
+        prize1 = randomDigits(6);
+        prize2 = randomDigits(6);
+        prize3 = randomDigits(6);
+        if (unique) {
+          while (prize2 === prize1) prize2 = randomDigits(6);
+          while (prize3 === prize1 || prize3 === prize2)
+            prize3 = randomDigits(6);
+        }
+        // last3 จะตั้งค่าหลังจากนี้จาก prize1
+        last2 = randomDigits(2);
+      } else {
+        // มีตั๋วขาย → จับจากเลขที่ขาย
+        const picks = unique
+          ? pickUnique(soldList, 3)
+          : pickUnique(soldList, 1);
+        prize1 = picks[0];
 
-    if (unique) {
-      const need = 3 - picks.length;
-      const extra: string[] = [];
-      const used = new Set(picks);
-      for (let i = 0; i < need; i++) {
-        let x = randomDigits(6);
-        while (used.has(x)) x = randomDigits(6);
-        used.add(x);
-        extra.push(x);
+        if (unique) {
+          const need = 3 - picks.length;
+          const extra: string[] = [];
+          const used = new Set(picks);
+          for (let i = 0; i < need; i++) {
+            let x = randomDigits(6);
+            while (used.has(x)) x = randomDigits(6);
+            used.add(x);
+            extra.push(x);
+          }
+          const all = [...picks, ...extra];
+          prize2 = all[1] ?? randomDigits(6);
+          prize3 = all[2] ?? randomDigits(6);
+        } else {
+          const r1 = soldList[Math.floor(Math.random() * soldList.length)];
+          const r2 = soldList[Math.floor(Math.random() * soldList.length)];
+          prize2 = r1;
+          prize3 = r2;
+        }
+
+        // last2 จะเอาจากเลขที่ขายเพื่อเพิ่มโอกาสถูกรางวัล
+        const anySold2 = soldList[Math.floor(Math.random() * soldList.length)];
+        last2 = anySold2.slice(-2);
       }
-      const all = [...picks, ...extra];
-      prize2 = all[1] ?? randomDigits(6);
-      prize3 = all[2] ?? randomDigits(6);
     } else {
-      const r1 = soldList[Math.floor(Math.random() * soldList.length)];
-      const r2 = soldList[Math.floor(Math.random() * soldList.length)];
-      prize2 = r1;
-      prize3 = r2;
+      // โหมดเดิม: สุ่มอิสระ
+      prize1 = randomDigits(6);
+      prize2 = randomDigits(6);
+      prize3 = randomDigits(6);
+      if (unique) {
+        while (prize2 === prize1) prize2 = randomDigits(6);
+        while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
+      }
+      // last3 จะตั้งค่าหลังจากนี้จาก prize1
+      last2 = randomDigits(2);
     }
 
-    // last2 จะเอาจากเลขที่ขายเพื่อเพิ่มโอกาสถูกรางวัล
-    const anySold2 = soldList[Math.floor(Math.random() * soldList.length)];
-    last2 = anySold2.slice(-2);
-  }
-} else {
-  // โหมดเดิม: สุ่มอิสระ
-  prize1 = randomDigits(6);
-  prize2 = randomDigits(6);
-  prize3 = randomDigits(6);
-  if (unique) {
-    while (prize2 === prize1) prize2 = randomDigits(6);
-    while (prize3 === prize1 || prize3 === prize2) prize3 = randomDigits(6);
-  }
-  // last3 จะตั้งค่าหลังจากนี้จาก prize1
-  last2 = randomDigits(2);
-}
-
-// <-- ตั้งค่าตรงนี้ครั้งเดียวหลังรู้ prize1 แน่นอนแล้ว
-last3 = prize1.slice(-3);
+    last3 = prize1.slice(-3);
 
     // 3) ปิดงวดด้วยผลรางวัลที่ได้
     await tx.execute(
@@ -717,8 +736,16 @@ last3 = prize1.slice(-3);
               closed_at=NOW()
         WHERE id=?`,
       [
-        prize1, prize2, prize3, last3, last2,
-        prize1Amount, prize2Amount, prize3Amount, last3Amount, last2Amount,
+        prize1,
+        prize2,
+        prize3,
+        last3,
+        last2,
+        prize1Amount,
+        prize2Amount,
+        prize3Amount,
+        last3Amount,
+        last2Amount,
         sourceMode,
         open.id,
       ]
@@ -746,7 +773,11 @@ last3 = prize1.slice(-3);
         nextOpenNumber,
         nextDrawDate,
         nextSourceMode,
-        carryP1, carryP2, carryP3, carryL3, carryL2,
+        carryP1,
+        carryP2,
+        carryP3,
+        carryL3,
+        carryL2,
       ]
     )) as unknown as [{ insertId: number }, unknown];
 
@@ -814,9 +845,13 @@ last3 = prize1.slice(-3);
     });
   } catch (error) {
     console.error("DB Error:", (error as any).sqlMessage || error);
-    try { await tx.rollback(); } catch {}
+    try {
+      await tx.rollback();
+    } catch {}
     res.status(500).json({ message: "Internal Server Error" });
   } finally {
-    try { tx.release(); } catch {}
+    try {
+      tx.release();
+    } catch {}
   }
 });
