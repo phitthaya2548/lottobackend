@@ -40,7 +40,7 @@ router.post("/", async (req, res) => {
       user.username.trim(),
       user.email.trim(),
       hashedPassword,
-      user.full_name?.trim() || null,
+      user.full_name?.trim() || "ยังไม่มีชื่อ",
       user.phone?.trim() || null,
     ];
 
