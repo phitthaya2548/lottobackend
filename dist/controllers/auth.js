@@ -45,7 +45,7 @@ exports.router.post("/", async (req, res) => {
                 user: {
                     id: user.id,
                     username: user.username,
-                    full_name: user.full_name || null,
+                    full_name: user.full_name || null, // Allow full_name to be null if it's not provided
                     phone: user.phone,
                     role: user.role,
                 },
