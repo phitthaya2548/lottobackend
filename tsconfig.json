@@ -2,11 +2,17 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
-    "rootDir": ".",
-    "outDir": "./dist",
+    "rootDir": "./",   // ใช้ root directory ที่มีไฟล์ .ts
+    "outDir": "./dist", // กำหนดให้คอมไพล์ไฟล์ไปที่ dist
     "esModuleInterop": true,
     "strict": true,
     "types": ["node"],
-"verbatimModuleSyntax": false,
-  }
+    "verbatimModuleSyntax": false
+  },
+  "include": [
+    "**/*.ts"  // คอมไพล์ทุกไฟล์ .ts
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
