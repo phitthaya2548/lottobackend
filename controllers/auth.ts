@@ -10,6 +10,7 @@ router.post("/", async (req, res) => {
     const userInput: Partial<User> = req.body;
     const username = userInput.username?.trim();
     const password = userInput.password;
+
     if (!username || !password) {
       res.status(400).json({ message: "username and password are required" });
       return;
@@ -34,10 +35,12 @@ router.post("/", async (req, res) => {
 
       const rows = results as any[];
       const user = rows?.[0];
+
       if (!user) {
         res.status(401).json({ message: "Invalid username or password" });
         return;
       }
+
       const isMatch = await bcrypt.compare(password, user.password_hash);
       if (!isMatch) {
         res.status(401).json({ message: "Invalid username or password" });
@@ -49,7 +52,7 @@ router.post("/", async (req, res) => {
         user: {
           id: user.id,
           username: user.username,
-          full_name: user.full_name,
+          full_name: user.full_name || null,  // Allow full_name to be null if it's not provided
           phone: user.phone,
           role: user.role,
         },
