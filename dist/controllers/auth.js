@@ -45,7 +45,7 @@ exports.router.post("/", async (req, res) => {
                 user: {
                     id: user.id,
                     username: user.username,
-                    full_name: user.full_name,
+                    full_name: user.full_name || null,
                     phone: user.phone,
                     role: user.role,
                 },
