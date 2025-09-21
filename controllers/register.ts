@@ -60,7 +60,6 @@ router.post("/", async (req, res) => {
       if (r.affectedRows === 1) {
         const userId = r.insertId;
 
-        // ✅ สร้าง wallet หลังจาก user insert สำเร็จ
         const sqlWallet = `
           INSERT INTO wallets (user_id, balance, created_at, updated_at)
           VALUES (?, ?, CONVERT_TZ(NOW(), '+00:00', '+07:00'),
@@ -74,7 +73,6 @@ router.post("/", async (req, res) => {
         conn.execute(sqlWallet, paramsWallet, (err2) => {
           if (err2) {
             console.error("Wallet DB Error:", (err2 as any).sqlMessage || err2);
-            // ยังถือว่าสมัคร user ได้ แต่สร้าง wallet fail
             res.status(201).json({
               success: true,
               message: "User registered, but wallet creation failed",

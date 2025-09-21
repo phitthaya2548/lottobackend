@@ -483,7 +483,7 @@ router.get("/bydate", async (req, res) => {
     res.json({
       success: true,
       draw: {
-        id: Number(row.id ?? 0), // <<<< ตอนนี้มีค่าแน่นอน
+        id: Number(row.id ?? 0), 
         drawNumber: Number(row.drawNumber ?? 0),
         drawDate: row.drawDate ?? date,
         results: {
@@ -566,6 +566,7 @@ router.get("/", (req, res) => {
 });
 router.post("/randomlotto", async (req, res) => {
   // ===== รับค่า (เหมือนเดิม) =====
+  // รับค่าจาก body ของ request ที่ส่งเข้ามา
   const body: Draw = (req.body ?? {}) as Draw;
   const prize1Amount = Number(body.prize1_amount ?? 0);
   const prize2Amount = Number(body.prize2_amount ?? 0);
@@ -575,7 +576,7 @@ router.post("/randomlotto", async (req, res) => {
   const unique = Boolean(body.unique_exact ?? true);
   const sourceMode = String(body.source_mode ?? "ALL");
 
-  const nextDrawDate = req.body?.next_draw_date ?? null; // YYYY-MM-DD หรือ null = วันนี้
+  const nextDrawDate = req.body?.next_draw_date ?? null; // วันที่จับสลากถัดไป (YYYY-MM-DD หรือ null คือวันนี้)
   const nextSourceMode = req.body?.next_source_mode ?? "ALL";
   const nextP1 = Number(req.body?.next_prize1_amount ?? 0);
   const nextP2 = Number(req.body?.next_prize2_amount ?? 0);
@@ -591,26 +592,39 @@ router.post("/randomlotto", async (req, res) => {
   const bootL3 = Number(req.body?.bootstrap_last3_amount ?? 0);
   const bootL2 = Number(req.body?.bootstrap_last2_amount ?? 0);
 
+  // ฟังก์ชันสุ่มเลข
   const randomDigits = (len: number) =>
     Math.floor(Math.random() * Math.pow(10, len))
       .toString()
       .padStart(len, "0");
 
-  // helper: สุ่ม k รายการแบบไม่ซ้ำจากอาร์เรย์ (ถ้าจำนวนน้อยกว่าก็คืนเท่าที่มี)
-  const pickUnique = <T>(arr: T[], k: number) => {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a.slice(0, Math.min(k, a.length));
-  };
+  // helper function: สุ่ม k รายการแบบไม่ซ้ำจากอาร์เรย์
+const pickUnique = <T>(arr: T[], k: number) => {
+  // คัดลอกอาร์เรย์ต้นฉบับมาเก็บในตัวแปรใหม่ เพื่อหลีกเลี่ยงการแก้ไขอาร์เรย์ต้นฉบับ
+  const a = [...arr];
+
+  // Fisher-Yates Shuffle: การสลับตำแหน่งในอาร์เรย์ให้เป็นแบบสุ่ม
+  // เริ่มจากตำแหน่งสุดท้าย (a.length - 1) ไปจนถึงตำแหน่งที่ 1
+  for (let i = a.length - 1; i > 0; i--) {
+    // สุ่มตำแหน่ง j จาก 0 ถึง i
+    const j = Math.floor(Math.random() * (i + 1));
+
+    // สลับตำแหน่งของ i และ j ในอาร์เรย์
+    [a[i], a[j]] = [a[j], a[i]]; // ใช้การ destructuring assignment เพื่อสลับค่า
+  }
+
+  // เลือก k รายการแรกจากอาร์เรย์ที่สลับแล้ว
+  // ถ้า k มากกว่าขนาดของอาร์เรย์ จะคืนค่าทั้งหมดที่มี
+  return a.slice(0, Math.min(k, a.length));
+};
+
 
   const tx = await conn.promise().getConnection();
   try {
-    await tx.beginTransaction();
+    await tx.beginTransaction();  // เริ่มการทำธุรกรรมในฐานข้อมูล
 
-    // 1) หาแถว OPEN (ล็อก)
+    // ===== 1) หาแถว OPEN (ล็อก) =====
+    // ค้นหางวดที่สถานะเป็น 'OPEN' เพื่อทำการล็อกไว้
     const [openRows] = (await tx.query(
       `SELECT id, draw_number
          FROM draws
@@ -623,6 +637,7 @@ router.post("/randomlotto", async (req, res) => {
     let open = openRows[0] ?? null;
 
     // 1.1) bootstrap ถ้าไม่มี OPEN
+    // ถ้าไม่มีงวดที่สถานะเป็น 'OPEN' ก็สร้างงวดใหม่
     if (!open) {
       const [lastRows] = (await tx.query(
         `SELECT id, draw_number
@@ -647,10 +662,11 @@ router.post("/randomlotto", async (req, res) => {
         [nextNumber, bootDate, bootMode, bootP1, bootP2, bootP3, bootL3, bootL2]
       )) as unknown as [{ insertId: number }, unknown];
 
-      open = { id: insOpen.insertId, draw_number: nextNumber };
+      open = { id: insOpen.insertId, draw_number: nextNumber };  // ตั้งค่างวดใหม่ที่เปิดขึ้นมา
     }
 
     // ===== 2) เลขรางวัล: โหมดปกติ vs SOLD_ONLY =====
+    // กำหนดตัวแปรสำหรับรางวัล
     let prize1: string;
     let prize2: string;
     let prize3: string;
@@ -658,6 +674,7 @@ router.post("/randomlotto", async (req, res) => {
     let last2: string;
 
     if (sourceMode === "SOLD_ONLY") {
+      // ถ้าโหมดคือ 'SOLD_ONLY' ให้เลือกเลขจากตั๋วที่ขายไปแล้ว
       const [soldRows] = (await tx.query(
         `SELECT ticket_number
        FROM tickets
@@ -669,7 +686,7 @@ router.post("/randomlotto", async (req, res) => {
       const soldList = soldRows.map((r) => r.ticket_number);
 
       if (soldList.length === 0) {
-        // ไม่มีตั๋วขาย → fallback สุ่ม
+        // ถ้าไม่มีตั๋วขาย → fallback สุ่ม
         prize1 = randomDigits(6);
         prize2 = randomDigits(6);
         prize3 = randomDigits(6);
@@ -681,7 +698,7 @@ router.post("/randomlotto", async (req, res) => {
         // last3 จะตั้งค่าหลังจากนี้จาก prize1
         last2 = randomDigits(2);
       } else {
-        // มีตั๋วขาย → จับจากเลขที่ขาย
+        // ถ้ามีตั๋วขาย → จับจากเลขที่ขาย
         const picks = unique
           ? pickUnique(soldList, 3)
           : pickUnique(soldList, 1);
@@ -724,7 +741,7 @@ router.post("/randomlotto", async (req, res) => {
       last2 = randomDigits(2);
     }
 
-    last3 = prize1.slice(-3);
+    last3 = prize1.slice(-3); // last3 จากเลข prize1
 
     // 3) ปิดงวดด้วยผลรางวัลที่ได้
     await tx.execute(
@@ -792,18 +809,17 @@ router.post("/randomlotto", async (req, res) => {
          prize1_amount, prize2_amount, prize3_amount, last3_amount, last2_amount,
          source_mode, created_at, closed_at
        FROM draws
-       WHERE id = ?
-       LIMIT 1`,
+       WHERE id = ?`,
       [open.id]
     )) as unknown as [Array<any>, unknown];
 
-    await tx.commit();
+    await tx.commit(); // Commit the transaction
 
+    // ส่งข้อมูลกลับให้ผู้ใช้
     const row = oneRows[0];
     res.status(201).json({
       success: true,
-      message:
-        "open draw (bootstrapped if missing) closed with results, next draw opened",
+      message: "open draw (bootstrapped if missing) closed with results, next draw opened",
       draw: {
         id: row.id,
         drawNumber: row.drawNumber,
@@ -846,12 +862,12 @@ router.post("/randomlotto", async (req, res) => {
   } catch (error) {
     console.error("DB Error:", (error as any).sqlMessage || error);
     try {
-      await tx.rollback();
+      await tx.rollback(); // Rollback in case of error
     } catch {}
     res.status(500).json({ message: "Internal Server Error" });
   } finally {
     try {
-      tx.release();
+      tx.release(); // Release connection after completion
     } catch {}
   }
 });

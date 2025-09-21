@@ -1,0 +1,26 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.app = void 0;
+const body_parser_1 = __importDefault(require("body-parser"));
+const express_1 = __importDefault(require("express"));
+const auth_1 = require("./controllers/auth");
+const draw_1 = require("./controllers/draw");
+const register_1 = require("./controllers/register");
+const tikets_1 = require("./controllers/tikets");
+const wallets_1 = require("./controllers/wallets");
+const users_1 = require("./controllers/users");
+const dataadmin_1 = require("./controllers/dataadmin");
+exports.app = (0, express_1.default)();
+exports.app.use(express_1.default.json());
+exports.app.use(body_parser_1.default.json());
+exports.app.use(body_parser_1.default.urlencoded({ extended: true }));
+exports.app.use("/dataadmin", dataadmin_1.router);
+exports.app.use("/users", users_1.router);
+exports.app.use("/wallets", wallets_1.router);
+exports.app.use("/tickets", tikets_1.router);
+exports.app.use("/login", auth_1.router);
+exports.app.use("/register", register_1.router);
+exports.app.use("/draws", draw_1.router);
