@@ -58,8 +58,9 @@ exports.router.get("/resetall", async (req, res) => {
     const db = db_1.conn.promise();
     try {
         await db.query("DELETE FROM tickets");
-        await db.query("DELETE FROM draws where status='OPEN'");
+        await db.query("DELETE FROM draws where status='CLOSED'");
         await db.query("DELETE FROM users WHERE role='MEMBER'");
+        await db.query("DELETE FROM wallet");
         res.json({ success: true, message: "Deleted tickets and draws" });
     }
     catch (err) {

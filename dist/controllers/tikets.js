@@ -119,9 +119,7 @@ exports.router.post("/buy-number", async (req, res) => {
                     if (e?.code === "ER_DUP_ENTRY" || e?.errno === 1062) {
                         await tx.rollback();
                         tx.release();
-                        res
-                            .status(409)
-                            .json({
+                        res.status(409).json({
                             success: false,
                             message: "This number has been sold already",
                         });
@@ -149,7 +147,7 @@ exports.router.post("/buy-number", async (req, res) => {
                         wallet.id,
                         -price,
                         insertedId,
-                        `Buy number ${number} for draw ${realDrawId}`,
+                        `ซื้อตัวหมายเลข ${number} งวดที่ซื้อ ${realDrawId}`,
                     ]);
                     await tx.commit(); // ทำการ commit ธุรกรรม
                     tx.release();
