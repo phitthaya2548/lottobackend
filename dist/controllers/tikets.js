@@ -85,7 +85,7 @@ exports.router.post("/buy-number", async (req, res) => {
                 res.status(409).json({ success: false, message: "draw is not OPEN" });
             }
             else {
-                const realDrawId = Number(draw.number ?? drawId);
+                const realDrawId = Number(draw.id);
                 // 2) ล็อก/สร้าง wallet (lazy-create)
                 const [wrows] = await tx.query(`SELECT id, balance FROM wallets WHERE user_id=? FOR UPDATE`, [userId]);
                 let wallet = wrows[0];
@@ -130,11 +130,11 @@ exports.router.post("/buy-number", async (req, res) => {
                 else {
                     // 5) log ประวัติ
                     await tx.execute(`INSERT INTO wallet_transactions (wallet_id, tx_type, amount, ref_type, ref_id, note)
-                 VALUES (?, 'PURCHASE', ?, 'TICKET', ?, ?)`, [
+                 VALUES (?, 'PURCHASE', ?, 'TICKET',  ?)`, [
                         wallet.id,
                         -price,
                         insertedId,
-                        `ซื้อตั่ว ${number} งวดที่ ${realDrawId}`,
+                        `ซื้อตั่ว ${number} งวดที่ ปัจจุบัน`,
                     ]);
                     await tx.commit();
                     tx.release();
