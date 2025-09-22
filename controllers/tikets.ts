@@ -1,23 +1,20 @@
 import type { RequestHandler } from "express";
 import express from "express";
-import { conn } from "../db"; // นำเข้า connection สำหรับการเชื่อมต่อกับฐานข้อมูล
+import { conn } from "../db";
 
-export const router = express.Router(); // สร้าง Router ของ Express
+export const router = express.Router();
 
-// ฟังก์ชันตรวจสอบสถานะของตั๋ว
 router.get("/check", async (req, res) => {
-  const drawId = Number(req.query.drawId); // รับค่า drawId จาก query parameter
-  const number = String(req.query.number ?? "").trim(); // รับค่า ticket number และตัดช่องว่าง
+  const drawId = Number(req.query.drawId);
+  const number = String(req.query.number ?? "").trim();
 
-  // ตรวจสอบว่า drawId เป็นจำนวนเต็มและ ticket number มี 6 หลัก
   if (!Number.isInteger(drawId) || !/^\d{6}$/.test(number)) {
     res.status(400).json({
       success: false,
-      message: "drawId:int & number:6 digits required", // หากไม่ตรงตามเงื่อนไขให้ส่งกลับข้อผิดพลาด
+      message: "drawId:int & number:6 digits required",
     });
   }
 
-  // ค้นหาสถานะของตั๋วจากฐานข้อมูล
   const [rows] = await conn
     .promise()
     .query(
@@ -25,39 +22,34 @@ router.get("/check", async (req, res) => {
       [drawId, number]
     );
 
-  const found = (rows as any[])[0]; // เอาผลลัพธ์แรก
+  const found = (rows as any[])[0];
 
-  // ตอบกลับสถานะว่าเบอร์ตั๋วสามารถซื้อได้หรือไม่ พร้อมสถานะปัจจุบันของตั๋ว
   res.json({
     success: true,
     drawId,
     ticketNumber: number,
-    canBuy: !found, // ถ้าไม่พบตั๋ว หมายความว่ายังสามารถซื้อได้
-    currentStatus: found?.status ?? null, // ส่งสถานะของตั๋วถ้ามี
+    canBuy: !found, // ไม่มีแถว = ยังไม่ถูกซื้อ = ซื้อได้
+    currentStatus: found?.status ?? null,
   });
 });
 
-// ฟังก์ชันจัดการคำขอข้อมูลตั๋วของผู้ซื้อ
 const asyncHandler =
   (fn: RequestHandler): RequestHandler =>
   (req, res, next) =>
     Promise.resolve(fn(req, res, next)).catch(next);
 
-// ฟังก์ชันดึงข้อมูลตั๋วที่ซื้อโดยผู้ซื้อ
 const getTicketsByBuyer: RequestHandler = async (req, res) => {
-  const drawNumber = Number(req.query.drawNumber ?? req.query.draw_number); // รับ drawNumber จาก query
-  const buyerId = Number(req.query.buyerUserId ?? req.query.buyer_user_id); // รับ buyerUserId จาก query
+  const drawNumber = Number(req.query.drawNumber ?? req.query.draw_number);
+  const buyerId = Number(req.query.buyerUserId ?? req.query.buyer_user_id);
 
-  // ตรวจสอบว่า drawNumber และ buyerId เป็นจำนวนเต็มหรือไม่
   if (!Number.isInteger(drawNumber) || !Number.isInteger(buyerId)) {
     res.status(400).json({
       success: false,
-      message: "drawNumber:int & buyerUserId:int required", // ถ้าไม่เป็นจำนวนเต็มให้คืนข้อผิดพลาด
+      message: "drawNumber:int & buyerUserId:int required",
     });
     return;
   }
 
-  // ค้นหาข้อมูลตั๋วที่ผู้ซื้อซื้อจากฐานข้อมูล
   const [rows] = await conn.promise().query(
     `SELECT t.ticket_number, t.status
        FROM tickets t
@@ -68,27 +60,23 @@ const getTicketsByBuyer: RequestHandler = async (req, res) => {
 
   const tickets = rows as Array<{ ticket_number: string; status: string }>;
 
-  // ส่งข้อมูลการซื้อกลับไปยัง client
   res.json({
     success: true,
     drawNumber,
     buyerUserId: buyerId,
-    count: tickets.length, // จำนวนตั๋วที่ผู้ซื้อมี
-    tickets, // รายการตั๋วทั้งหมดที่ผู้ซื้อซื้อ
+    count: tickets.length,
+    tickets,
   });
 };
 
-// ใช้ asyncHandler เพื่อจัดการการทำงานแบบ async
 router.get("/by-buyer-and-draw", asyncHandler(getTicketsByBuyer));
 
-// ฟังก์ชันสำหรับการซื้อหมายเลข
 router.post("/buy-number", async (req, res) => {
-  const drawId = Number(req.body?.drawId); // รับค่า drawId จาก request body
-  const userId = Number(req.body?.userId); // รับค่า userId จาก request body
-  const number = String(req.body?.number ?? "").trim(); // รับหมายเลขตั๋วที่ต้องการซื้อ
-  const price = 100; // ราคา (กำหนดให้ 100)
+  const drawId = Number(req.body?.drawId);
+  const userId = Number(req.body?.userId);
+  const number = String(req.body?.number ?? "").trim();
+  const price = 100;
 
-  // ตรวจสอบค่าของ drawId, userId, number และ price ว่าถูกต้องหรือไม่
   if (
     !Number.isInteger(drawId) ||
     !Number.isInteger(userId) ||
@@ -97,14 +85,14 @@ router.post("/buy-number", async (req, res) => {
   ) {
     res.status(400).json({
       success: false,
-      message: "drawId:int, userId:int, number:6 digits, price>0 required", // ถ้าไม่ถูกต้องส่งข้อผิดพลาดกลับ
+      message: "drawId:int, userId:int, number:6 digits, price>0 required",
     });
   } else {
-    const tx = await conn.promise().getConnection(); // เริ่มต้นการเชื่อมต่อฐานข้อมูล
+    const tx = await conn.promise().getConnection();
     try {
-      await tx.beginTransaction(); // เริ่มธุรกรรม
+      await tx.beginTransaction();
 
-      // 1) ล็อกข้อมูลงวดปัจจุบัน
+      // 1) ล็อกงวด
       const [drows] = await tx.query(
         `SELECT id, status FROM draws WHERE id=? OR draw_number=? LIMIT 1 FOR UPDATE`,
         [drawId, drawId]
@@ -112,17 +100,17 @@ router.post("/buy-number", async (req, res) => {
       const draw = (drows as any[])[0];
 
       if (!draw) {
-        await tx.rollback(); // หากไม่พบ draw ให้ทำการ rollback
+        await tx.rollback();
         tx.release();
         res.status(404).json({ success: false, message: "draw not found" });
       } else if (draw.status !== "OPEN") {
-        await tx.rollback(); // หากสถานะไม่ใช่ "OPEN" ทำการ rollback
+        await tx.rollback();
         tx.release();
         res.status(409).json({ success: false, message: "draw is not OPEN" });
       } else {
-        const realDrawId = Number(draw.id);
+        const realDrawId = Number(draw.number ?? drawId);
 
-        // 2) ล็อกหรือสร้าง wallet ของผู้ใช้ (Lazy-create wallet)
+        // 2) ล็อก/สร้าง wallet (lazy-create)
         const [wrows] = await tx.query(
           `SELECT id, balance FROM wallets WHERE user_id=? FOR UPDATE`,
           [userId]
@@ -130,7 +118,6 @@ router.post("/buy-number", async (req, res) => {
         let wallet = (wrows as any[])[0];
 
         if (!wallet) {
-          // ถ้าไม่พบ wallet ให้สร้างใหม่
           const [insw] = await tx.execute(
             `INSERT INTO wallets (user_id, balance, created_at) VALUES (?, 0, NOW())`,
             [userId]
@@ -139,7 +126,7 @@ router.post("/buy-number", async (req, res) => {
           wallet = { id: wid, balance: 0 };
         }
 
-        // 3) จองตั๋ว (ถ้ามีหมายเลขนี้แล้วให้ไม่สามารถซื้อได้)
+        // 3) จองตั๋ว (กันชนด้วย unique)
         let insertedId: number | undefined;
         try {
           const [ins] = await tx.execute(
@@ -149,7 +136,6 @@ router.post("/buy-number", async (req, res) => {
           );
           insertedId = (ins as any).insertId;
         } catch (e: any) {
-          // หากมีข้อผิดพลาด (เช่น ตั๋วซ้ำ) ให้ rollback และส่งข้อความว่า "หมายเลขนี้ถูกขายไปแล้ว"
           if (e?.code === "ER_DUP_ENTRY" || e?.errno === 1062) {
             await tx.rollback();
             tx.release();
@@ -158,19 +144,20 @@ router.post("/buy-number", async (req, res) => {
               message: "This number has been sold already",
             });
           } else {
-            throw e; // ถ้าเกิดข้อผิดพลาดอื่นๆ ให้โยนข้อผิดพลาดออกไป
+            throw e;
           }
-          return;
+          return; // กันไหลไปบล็อก success
         }
 
-        // 4) หักเงินจาก wallet ของผู้ซื้อ
+        // 4) หักเงินแบบ atomic (หักได้เฉพาะกรณีเงินพอ)
         const [upd]: any = await tx.execute(
-          `UPDATE wallets SET balance = balance - ? WHERE id=? AND balance >= ?`,
+          `UPDATE wallets SET balance = balance - ?
+               WHERE id=? AND balance >= ?`,
           [price, wallet.id, price]
         );
 
         if (upd.affectedRows !== 1) {
-          // หากยอดเงินไม่พอให้ทำการ rollback และลบตั๋วที่จอง
+          // เงินไม่พอ → ยกเลิกดีล และลบตั๋วที่เพิ่งจอง
           await tx.execute(`DELETE FROM tickets WHERE id=?`, [insertedId]);
           await tx.rollback();
           tx.release();
@@ -178,23 +165,21 @@ router.post("/buy-number", async (req, res) => {
             .status(400)
             .json({ success: false, message: "Insufficient balance" });
         } else {
-          // 5) บันทึกประวัติการทำธุรกรรมใน wallet_transactions
+          // 5) log ประวัติ
           await tx.execute(
             `INSERT INTO wallet_transactions (wallet_id, tx_type, amount, ref_type, ref_id, note)
                  VALUES (?, 'PURCHASE', ?, 'TICKET', ?, ?)`,
-
             [
               wallet.id,
               -price,
               insertedId!,
-              `ซื้อตัวหมายเลข ${number} งวดที่ซื้อ ${realDrawId}`,
+              `ซื้อตั่ว ${number} งวดที่ ${realDrawId}`,
             ]
           );
 
-          await tx.commit(); // ทำการ commit ธุรกรรม
+          await tx.commit();
           tx.release();
 
-          // ส่งข้อมูลตั๋วที่ซื้อกลับไป
           res.json({
             success: true,
             message: "Ticket purchased",
@@ -210,7 +195,6 @@ router.post("/buy-number", async (req, res) => {
         }
       }
     } catch (err: any) {
-      // หากเกิดข้อผิดพลาดในระหว่างกระบวนการ
       try {
         await tx.rollback();
       } catch {}
