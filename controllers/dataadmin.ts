@@ -58,8 +58,7 @@ router.get("/resetall", async (req, res) => {
     await db.query("DELETE FROM tickets");
     await db.query("DELETE FROM draws where status='CLOSED'");
     await db.query("DELETE FROM users WHERE role='MEMBER'");
-    await db.query("DELETE FROM wallet"); 
-    res.json({ success: true, message: "Deleted tickets and draws" });
+    res.json({ success: true, message: "Deleted data all." });
   } catch (err: any) {
     console.error("DB Error:", err.sqlMessage || err.message || err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
